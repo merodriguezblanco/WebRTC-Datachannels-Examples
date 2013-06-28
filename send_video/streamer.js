@@ -32,7 +32,7 @@ function Streamer() {
       if(!blob) return;
       var size = blob.sourceBufferize,
       startIndex = 0,
-      plus = 1000;
+      plus = 500;
 
       console.debug('one chunk size: <', plus, '>');
 

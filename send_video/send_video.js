@@ -2,17 +2,14 @@ var app = {};
 window.streamer = new Streamer();
 
 streamer.push = function(chunk) {
-  console.log(chunk);
-  app.senderDataChannel.send(chunk);
+  app.senderDataChannel.send(JSON.stringify(chunk));
 };
 
 streamer.video = document.querySelector('video');
 streamer.receive();
 
-app.sendButton = document.getElementById("send");
-
-app.sendButton.addEventListener("click", function(event) {
-  var videoFile = document.querySelector("input[type=file]").files[0];
+document.querySelector("input[type=file]").addEventListener("change", function(event) {
+  var videoFile = this.files[0];
   streamer.stream(videoFile);
 }, false);
 
@@ -85,7 +82,7 @@ app.gotReceiverDataChannel = function(event) {
 };
 
 app.handleReceivedMessage = function(event) {
-  var data = event.data;
+  var data = JSON.parse(event.data);
 
   console.log("Handle Receive Message callback. Message: " + data);
   if (data.end) {
