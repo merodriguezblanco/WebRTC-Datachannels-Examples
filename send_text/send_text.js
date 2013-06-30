@@ -1,4 +1,6 @@
 var app = {};
+var mediaConstraints = { optional: [], mandatory: { OfferToReceiveAudio: false, OfferToReceiveVideo: false } }
+window.streamer = new Streamer();
 
 app.sendTextButton = document.getElementById("send_text");
 
@@ -41,7 +43,7 @@ app.createPeerConnections = function() {
   app.remotePeerConnection.onicecandidate = app.gotRemoteIceCandidate;
   app.remotePeerConnection.ondatachannel = app.gotReceiverDataChannel;
 
-  app.localPeerConnection.createOffer(app.gotLocalDescription);
+  app.localPeerConnection.createOffer(app.gotLocalDescription, null, mediaConstraints);
 };
 
 app.handleSenderChannelState = function() {
@@ -88,7 +90,7 @@ app.gotLocalDescription = function(description) {
   console.log("Offer from localPeerConnection: " + description.sdp);
   app.localPeerConnection.setLocalDescription(description);
   app.remotePeerConnection.setRemoteDescription(description);
-  app.remotePeerConnection.createAnswer(app.gotRemoteDescription);
+  app.remotePeerConnection.createAnswer(app.gotRemoteDescription, null, mediaConstraints);
 };
 
 app.gotRemoteDescription = function(description) {
@@ -97,6 +99,6 @@ app.gotRemoteDescription = function(description) {
   app.localPeerConnection.setRemoteDescription(description);
 };
 
-(function() {
+document.addEventListener("DOMContentLoaded", function() {
   app.createPeerConnections();
-})();
+}, false);
