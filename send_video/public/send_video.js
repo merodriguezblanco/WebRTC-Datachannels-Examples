@@ -1,110 +1,102 @@
-var app = {};
-window.streamer = new Streamer();
+document.addEventListener("DOMContentLoaded", function() {
+  var streamer = new Streamer();
+  var offerer, answerer;
+  var offererDataChannel, answererDataChannel;
+  var iceServers;
+  var onData;
+  var optionalRtpDataChannels;
+  var mediaConstraints;
+  var createAnswer;
+  var setChannelEvents;
+  var setBandwidth;
 
-streamer.push = function(chunk) {
-  app.senderDataChannel.send(JSON.stringify(chunk));
-};
-
-streamer.video = document.querySelector('video');
-streamer.receive();
-
-document.querySelector("input[type=file]").addEventListener("change", function(event) {
-  var videoFile = this.files[0];
-  streamer.stream(videoFile);
-}, false);
-
-app.createPeerConnections = function() {
-  var servers = null;
-
-  try {
-    app.localPeerConnection = new webkitRTCPeerConnection(servers, {optional: [{RtpDataChannels: true}]});
-    console.log("Created local RTCPeerConnection.");
-  } catch(exception) {
-    console.log("Failed to create local RTCPeerConnection: " + exception.message);
+  // Pre-recorded media sender
+  streamer.push = function(chunk) {
+    chunk = JSON.stringify(chunk);
+    offererDataChannel.send(chunk);
   };
 
-  try {
-    app.senderDataChannel = app.localPeerConnection.createDataChannel("senderDataChannel", {reliable: false});
-    console.log("Created sender datachannel.");
-  } catch(exception) {
-    console.log("createDataChannel failed with exception: " + exception.message);
-  };
+  document.querySelector("input[type=file]").addEventListener("change", function () {
+    streamer.stream(this.files[0]);
+  }, false);
 
-  app.localPeerConnection.onicecandidate = app.gotLocalIceCandidate;
-  app.senderDataChannel.onopen = app.handleSenderChannelState;
-  app.senderDataChannel.onclose = app.handleSenderChannelState;
+  // Pre-recorded media receiver
+  streamer.video = document.querySelector("video");
+  streamer.receive();
 
-  try {
-    app.remotePeerConnection = new webkitRTCPeerConnection(servers, {optional: [{RtpDataChannels: true}]});
-    console.log("Created remote RTCPeerConnection.");
-  } catch(exception) {
-    console.log("Failed to create remote RTCPeerConnection: " + exception.message);
-  };
-
-  app.remotePeerConnection.onicecandidate = app.gotRemoteIceCandidate;
-  app.remotePeerConnection.ondatachannel = app.gotReceiverDataChannel;
-
-  app.localPeerConnection.createOffer(app.gotLocalDescription);
-};
-
-app.handleSenderChannelState = function() {
-  var readyState = app.senderDataChannel.readyState;
-  console.log("Sender datachannel state is: " + readyState);
-};
-
-app.handleReceiverChannelState = function() {
-  var readyState = app.receiverDataChannel.readyState;
-  console.log("Receiver datachannel state is: " + readyState);
-};
-
-app.gotLocalIceCandidate = function(event) {
-  console.log("Local ICE callback.");
-  if (event.candidate) {
-    app.remotePeerConnection.addIceCandidate(event.candidate);
-    console.log("Local ICE candidate: " + event.candidate.candidate);
-  };
-};
-
-app.gotRemoteIceCandidate = function(event) {
-  console.log("Remote ICE callback.");
-  if (event.candidate) {
-    app.localPeerConnection.addIceCandidate(event.candidate);
-    console.log("Remote ICE candidate: " + event.candidate.candidate);
-  };
-};
-
-app.gotReceiverDataChannel = function(event) {
-  console.log("Receive Channel callback.");
-  app.receiverDataChannel = event.channel;
-  app.receiverDataChannel.onmessage = app.handleReceivedMessage;
-  app.receiverDataChannel.onopen = app.handleReceiverChannelState;
-  app.receiverDataChannel.onclose = app.handleReceiverChannelState;
-};
-
-app.handleReceivedMessage = function(event) {
-  var data = JSON.parse(event.data);
-
-  console.log("Handle Receive Message callback. Message: " + data);
-  if (data.end) {
-    streamer.end();
-  } else {
-    streamer.append(data);
+  onData = function (data) {
+    console.log(data);
+    if (data.end) {
+      streamer.end();
+    } else {
+      streamer.append(data);
+    }
   }
-};
 
-app.gotLocalDescription = function(description) {
-  console.log("Offer from localPeerConnection: " + description.sdp);
-  app.localPeerConnection.setLocalDescription(description);
-  app.remotePeerConnection.setRemoteDescription(description);
-  app.remotePeerConnection.createAnswer(app.gotRemoteDescription);
-};
+  iceServers = { iceServers: [{ url: "stun:stun.l.google.com:19302" }] };
 
-app.gotRemoteDescription = function(description) {
-  console.log("Answer from remotePeerConnection: " + description.sdp);
-  app.remotePeerConnection.setLocalDescription(description);
-  app.localPeerConnection.setRemoteDescription(description);
-};
+  optionalRtpDataChannels = { optional: [{ RtpDataChannels: true }] };
 
-document.addEventListener("DOMContentLoaded", function () {
-  app.createPeerConnections();
+  mediaConstraints = {
+    optional: [],
+    mandatory: {
+      OfferToReceiveAudio: false, // Hmm!!
+      OfferToReceiveVideo: false // Hmm!!
+    }
+  };
+
+  offerer = new webkitRTCPeerConnection(iceServers, optionalRtpDataChannels),
+  offererDataChannel = offerer.createDataChannel("RTCDataChannel", { reliable: false });
+  offerer.onicecandidate = function (event) {
+    if (!event || !event.candidate) return;
+    answerer && answerer.addIceCandidate(event.candidate);
+  };
+  offerer.createOffer(function (sessionDescription) {
+    sessionDescription.sdp = setBandwidth(sessionDescription.sdp);
+    offerer.setLocalDescription(sessionDescription);
+    createAnswer(sessionDescription);
+  }, null, mediaConstraints);
+
+  createAnswer = function (offerSDP) {
+    answerer = new webkitRTCPeerConnection(iceServers, optionalRtpDataChannels);
+    answererDataChannel = answerer.createDataChannel("RTCDataChannel", { reliable: false });
+
+    setChannelEvents(answererDataChannel, "answerer");
+
+    answerer.onicecandidate = function (event) {
+      if (!event || !event.candidate) {
+        return;
+      }
+      offerer && offerer.addIceCandidate(event.candidate);
+    };
+
+    answerer.setRemoteDescription(offerSDP);
+    answerer.createAnswer(function (sessionDescription) {
+      sessionDescription.sdp = setBandwidth(sessionDescription.sdp);
+      answerer.setLocalDescription(sessionDescription);
+      offerer.setRemoteDescription(sessionDescription);
+    }, null, mediaConstraints);
+  }
+
+  setChannelEvents = function (channel, channelNameForConsoleOutput) {
+    channel.onmessage = function (event) {
+      console.debug(channelNameForConsoleOutput, "received a message:", event.data);
+
+      var data = JSON.parse(event.data);
+      console.log(data);
+      onData(data);
+    };
+
+    channel.onopen = function () {
+      channel.send("first text message over RTP data ports");
+    };
+  }
+
+  setBandwidth = function (sdp) {
+    // Remove existing bandwidth lines
+    sdp = sdp.replace( /b=AS([^\r\n]+\r\n)/g , '');
+    sdp = sdp.replace( /a=mid:data\r\n/g , 'a=mid:data\r\nb=AS:1638400\r\n');
+
+    return sdp;
+  }
 }, false);
